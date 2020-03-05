@@ -1,0 +1,74 @@
+public class TaskAutoCreationControllerQueueable implements Queueable{
+    
+    private list<id> recordIdList;
+    
+    public TaskAutoCreationControllerQueueable (list<id> sObjectIdList){
+        this.recordIdList = sObjectIdList;
+    }
+    public void Execute(QueueableContext context){
+        list<Task> finalTaskListToReturn = new list<Task>();
+        id recordId;
+        if(recordIdList.size() > 0){
+            recordId = recordIdList[0];
+        }
+        
+        String objectName = recordId.getSObjectType().getDescribe().getName();
+        
+        TaskAutoCreationUtilities.DetailsWrapper_Invocable myDetails = TaskAutoCreationUtilities.getMappingListAndRecordDetails_Invocable(objectName, recordIdList);
+        list<Task_Auto_Creation_Mapping__mdt> myMappingList= myDetails.mappingList;
+        
+        list<sObject> mySOjectList = myDetails.mySObjectList;
+        map<sObject, list<id>> taksAutoCreationTypeIdMap = TaskAutoCreationUtilities.getTaskAutoCreationTypeIDs_Invocable(myMappingList, mySOjectList);
+        
+        list<Task_Auto_Creation_Type__mdt> typesForGivenSObjectList = new list<Task_Auto_Creation_Type__mdt>();
+        
+        set<id> typeIdSet = new set<id>();
+        
+        for(sObject key: taksAutoCreationTypeIdMap.keySet()){
+            list<id> myIdList = taksAutoCreationTypeIdMap.get(key);
+            typeIdSet.addAll(myIdList);
+        }
+        
+        map<id, Task_Auto_Creation_Type__mdt> possibleTypesMap = new map<id, Task_Auto_Creation_Type__mdt>([SELECT 
+                                                                                                        id,
+                                                                                                        MasterLabel,
+                                                                                                        Task_Subject_Long__c,
+                                                                                                        Active__c,
+                                                                                                        Description__c,
+                                                                                                        Default_Priority__c,
+                                                                                                        Default_Status__c,
+                                                                                                        Responsible_Party__c,
+                                                                                                        Default_Assigned_To_User_ID__c
+                                                                                                        FROM Task_Auto_Creation_Type__mdt
+                                                                                                        WHERE ID in: typeIdSet AND Active__c = True]);
+        
+        Id recordTypeId = Schema.SObjectType.Task.getRecordTypeInfosByName().get('Auto Created Task').getRecordTypeId();
+        list<Task> tasksToInsert = new list<Task>();
+        
+        for(sObject key : taksAutoCreationTypeIdMap.keySet()){
+            list<id> sObjectSpecificIdList = taksAutoCreationTypeIdMap.get(key);
+            for(id mySelectedId : sObjectSpecificIdList){
+                Task_Auto_Creation_Type__mdt myType = possibleTypesMap.get(mySelectedId);
+                id myOwnerId;
+                if(!Test.isRunningTest()){
+                    myOwnerId = myType.Default_Assigned_To_User_ID__c;
+                } else {
+                    myOwnerId = UserInfo.getUserId();
+                }
+                task taskToAdd = new Task(RecordTypeId = recordTypeId, 
+                                          WhatId = key.Id,
+                                          Task_Auto_Creation_Type_Id__c = myType.Id,
+                                          Priority = myType.Default_Priority__c,
+                                          Status = myType.Default_Status__c,
+                                          Subject = myType.Task_Subject_Long__c,
+                                          Description = myType.Description__c,
+                                          Responsible_Party__c = myType.Responsible_Party__c,
+                                          ActivityDate = system.today(),
+                                          OwnerId = myOwnerId);
+                tasksToInsert.add(taskToAdd);
+            } 
+            
+        }
+        insert tasksToInsert;
+    }
+}
