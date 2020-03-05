@@ -1,0 +1,177 @@
+public class TaskAutoCreationUtilities {
+    @AuraEnabled
+    public static DetailsWrapper getMappingListAndRecordDetails(string whatObject, string recordId){
+        list<Task_Auto_Creation_Mapping__mdt> mappingList = [SELECT 
+                                                             ID,
+                                                             Field__r.QualifiedApiName,
+                                                             Evaluation_Criteria__c,
+                                                             Object__c,
+                                                             Value__c,
+                                                             Task_Auto_Creation_Type__c
+                                                             FROM Task_Auto_Creation_Mapping__mdt
+                                                             WHERE Object__r.QualifiedApiName  =: whatObject];
+        
+        set<string> targetFieldsSet = new set<String>();
+        
+        for(Task_Auto_Creation_Mapping__mdt mapping: mappingList){
+            targetFieldsSet.add(mapping.Field__r.QualifiedApiName);
+        }
+        list<String> fieldNameList = new list<String>(targetFieldsSet);
+        
+        sObject myRecord;
+        
+        if(fieldNameList.size() > 0){
+            string queryString = 'SELECT Id, '+ String.join(fieldNameList, ' , ') + ' FROM ' + whatObject + ' WHERE Id = \''+ recordId + '\' LIMIT 1';
+            list<sObject> results = Database.query(queryString);
+            myRecord = results[0];
+        } else {
+            myRecord = null;
+        }
+        
+        DetailsWrapper returnWrapper = new DetailsWrapper(myRecord, mappingList);
+        
+        return returnWrapper;
+    }
+    
+    public static DetailsWrapper_Invocable getMappingListAndRecordDetails_Invocable(string whatObject, list<string> recordIdList){
+        list<Task_Auto_Creation_Mapping__mdt> mappingList = [SELECT 
+                                                             ID,
+                                                             Field__r.QualifiedApiName,
+                                                             Evaluation_Criteria__c,
+                                                             Object__c,
+                                                             Value__c,
+                                                             Task_Auto_Creation_Type__c
+                                                             FROM Task_Auto_Creation_Mapping__mdt
+                                                             WHERE Object__r.QualifiedApiName  =: whatObject];
+        
+        set<string> targetFieldsSet = new set<String>();
+        
+        for(Task_Auto_Creation_Mapping__mdt mapping: mappingList){
+            targetFieldsSet.add(mapping.Field__r.QualifiedApiName);
+        }
+        list<String> fieldNameList = new list<String>(targetFieldsSet);
+        
+        list<sObject> myRecords = new list<sObject>();
+        list<String> recordIdListOfStrings = (list<String>)JSON.deserialize(JSON.serialize(recordIdList), list<String>.class);
+        
+        if(fieldNameList.size() > 0){
+            string queryString = 'SELECT Id, '+ String.join(fieldNameList, ' , ') + ' FROM ' + whatObject + ' WHERE Id IN (\''+String.join(recordIdListOfStrings,'\',\'')+'\')';
+            system.debug('Mapping Query String: '+queryString);
+            myRecords = Database.query(queryString);
+        }
+        
+        DetailsWrapper_Invocable returnWrapper = new DetailsWrapper_Invocable(myRecords, mappingList);
+        
+        return returnWrapper;
+    }
+    
+    @AuraEnabled
+    public static list<String> getTaskAutoCreationTypeIDs(list<Task_Auto_Creation_Mapping__mdt> myMappingList, SObject mySObject){
+        list<String> taskAutoCreationTypeIDList = new list<String>();
+        for(Task_Auto_Creation_Mapping__mdt myMapping : myMappingList ){
+            Object field = mySObject.get(myMapping.Field__r.QualifiedApiName);
+            system.debug('MyMapping Criteria Field: '+myMapping.Field__r.QualifiedApiName);
+            system.debug('MyMapping Evaluation Criteria: '+myMapping.Evaluation_Criteria__c);
+            system.debug('MyMapping Criteria Value: '+myMapping.Value__c);
+            system.debug('myRecord Value: '+field);
+            Boolean isEnabled = false;
+            if(myMapping.Evaluation_Criteria__c == 'Use Boolean Value of Field'){
+                isEnabled = (Boolean)field;
+            } else if(myMapping.Evaluation_Criteria__c == 'Contains'){
+                isEnabled = (String.valueOf(field)).contains(myMapping.Value__c);
+            } else if(myMapping.Evaluation_Criteria__c == 'Is Not Null/Blank'){
+                isEnabled = String.isNotBlank(String.valueOf(field));
+            } else if(myMapping.Evaluation_Criteria__c == 'Is Null/Blank'){
+                isEnabled = String.isBlank(String.valueOf(field));
+            } else if(myMapping.Evaluation_Criteria__c == 'Greater or Equal to'){
+                isEnabled = (Decimal)field >= Decimal.valueOf(myMapping.Value__c);
+            } else if(myMapping.Evaluation_Criteria__c == 'Less Than or Equal To'){
+                isEnabled = (Decimal)field <= Decimal.valueOf(myMapping.Value__c);
+            }
+            if(isEnabled){
+                taskAutoCreationTypeIDList.add(myMapping.Task_Auto_Creation_Type__c);
+            }
+        }
+        return taskAutoCreationTypeIDList;
+    }
+    
+    @AuraEnabled
+    public static map<sObject, list<id>> getTaskAutoCreationTypeIDs_Invocable(list<Task_Auto_Creation_Mapping__mdt> myMappingList, list<SObject> mySObjectList){
+        map<sObject, list<id>> tastAutoCreationTypeIDMap = new map<sObject, list<id>>();
+        for(sObject mySObject: mySObjectList){
+            list<id> taskAutoCreationTypeIDList = new list<id>();
+            
+            for(Task_Auto_Creation_Mapping__mdt myMapping : myMappingList ){
+                Object field = mySObject.get(myMapping.Field__r.QualifiedApiName);
+                system.debug('MyMapping Criteria Field: '+myMapping.Field__r.QualifiedApiName);
+                system.debug('MyMapping Evaluation Criteria: '+myMapping.Evaluation_Criteria__c);
+                system.debug('MyMapping Criteria Value: '+myMapping.Value__c);
+                system.debug('myRecord Value: '+field);
+                Boolean isEnabled = false;
+                if(myMapping.Evaluation_Criteria__c == 'Use Boolean Value of Field'){
+                    isEnabled = (Boolean)field;
+                } else if(myMapping.Evaluation_Criteria__c == 'Contains'){
+                    isEnabled = (String.valueOf(field)).contains(myMapping.Value__c);
+                } else if(myMapping.Evaluation_Criteria__c == 'Is Not Null/Blank'){
+                    isEnabled = String.isNotBlank(String.valueOf(field));
+                } else if(myMapping.Evaluation_Criteria__c == 'Is Null/Blank'){
+                    isEnabled = String.isBlank(String.valueOf(field));
+                } else if(myMapping.Evaluation_Criteria__c == 'Greater or Equal to'){
+                    isEnabled = (Decimal)field >= Decimal.valueOf(myMapping.Value__c);
+                } else if(myMapping.Evaluation_Criteria__c == 'Less Than or Equal To'){
+                    isEnabled = (Decimal)field <= Decimal.valueOf(myMapping.Value__c);
+                }
+                if(isEnabled){
+                    taskAutoCreationTypeIDList.add(myMapping.Task_Auto_Creation_Type__c);
+                }
+            }
+            tastAutoCreationTypeIDMap.put(mySObject, taskAutoCreationTypeIDList);
+        }
+        return tastAutoCreationTypeIDMap;
+    }
+    
+    public class DetailsWrapper {
+        @auraEnabled
+        public sObject mySObject {get; set;}
+        @auraEnabled
+        public list<Task_Auto_Creation_Mapping__mdt> mappingList {get; set;}
+        
+        public DetailsWrapper(sObject mySObject, list<Task_Auto_Creation_Mapping__mdt> mappingList){
+            this.mySObject = mySObject;
+            this.mappingList = mappingList;
+        }
+    }
+    
+    public class DetailsWrapper_Invocable {
+        @auraEnabled
+        public list<sObject> mySObjectList {get; set;}
+        @auraEnabled
+        public list<Task_Auto_Creation_Mapping__mdt> mappingList {get; set;}
+        
+        public DetailsWrapper_Invocable(list<sObject> mySObjectList, list<Task_Auto_Creation_Mapping__mdt> mappingList){
+            this.mySObjectList = mySObjectList;
+            this.mappingList = mappingList;
+        }
+    }
+    
+    public static list<list<String>> compareLists(list<String> listA, list<String> ListB){
+        list<List<String>> listOfListsForReturn = new list<list<String>>();
+        string listAAsString = string.join(listA,' , ' );
+        string listBAsString = string.join(listB,' , ' );
+        list<String> listAItemsNotInB = new list<String>();
+        list<String> listBItemsNotInA = new list<String>();
+        for(string listAItem: listA){
+            if(!listBAsString.contains(listAItem)){
+                listAItemsNotInB.add(listAItem);
+            }
+        }
+        listOfListsForReturn.add(listAItemsNotInB);
+        for(string listBItem: listB){
+            if(!listAAsString.contains(listBItem)){
+                listBItemsNotInA.add(listBItem);
+            }
+        }
+        listOfListsForReturn.add(listBItemsNotInA);
+        return listOfListsForReturn;
+    }
+}
